@@ -1,7 +1,6 @@
 import Tree    from "./tree";
 import Context from "./context";
 
-
 export type Listener<T> = (event: T, context: Context<T>) => void;
 
 export namespace Listener {  
@@ -9,7 +8,7 @@ export namespace Listener {
     return (event: T, context: Context<T>) => {
       count -=1;
       if(count >= 0) listener(event, context);
-      if(count <= 0) Tree.detach(...Context.tuple(context));
+      if(count <= 0) Tree.deafen(...Context.tuple(context));
     }
   }
 

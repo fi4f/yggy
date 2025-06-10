@@ -1,9 +1,11 @@
 import Tree     from "./tree";
+import Node     from "./node";
 import Listener from "./listener";
 
 export interface Context<T> {
   readonly self: Listener<T>
   readonly tree: Tree
+  readonly node: Node
   readonly type: string
   readonly path: string
 }

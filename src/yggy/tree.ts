@@ -18,14 +18,14 @@ export interface Tree {
 }
 
 export namespace Tree {
-  export function attach<T>(tree: Tree, type  : string, listener  : Listener<T>, o ?: { path ?: string, defer ?: boolean }) {
-    const a: Action.Attach = { action: Action.ATTACH, tree, type, listener, path: o?.path ?? "" };    
+  export function listen<T>(tree: Tree, type  : string, listener  : Listener<T>, o ?: { path ?: string, defer ?: boolean }) {
+    const a: Action.Listen = { action: Action.LISTEN, tree, type, listener, path: o?.path ?? "" };    
     if(o?.defer ?? true) queue(tree, a);
     else                 flush(tree, a);
   }
 
-  export function detach<T>(tree: Tree, type ?: string, listener ?: Listener<T>, o ?: { path ?: string, defer ?: boolean }) {
-    const a: Action.Detach = { action: Action.DETACH, tree, type, listener, path: o?.path ?? "" };    
+  export function deafen<T>(tree: Tree, type ?: string, listener ?: Listener<T>, o ?: { path ?: string, defer ?: boolean }) {
+    const a: Action.Deafen = { action: Action.DEAFEN, tree, type, listener, path: o?.path ?? "" };    
     if(o?.defer ?? true) queue(tree, a);
     else                 flush(tree, a);
   }
@@ -46,33 +46,38 @@ export namespace Tree {
 
   function flush(tree: Tree, a: Action) {
     switch(a.action) {
-      case Action.ATTACH  : onAttach  (tree, a); break;
-      case Action.DETACH  : onDetach  (tree, a); break;
+      case Action.LISTEN  : onListen  (tree, a); break;
+      case Action.DEAFEN  : onDeafen  (tree, a); break;
       case Action.DISPATCH: onDispatch(tree, a); break;
     }
   }
 
-  function onAttach  (tree: Tree, a: Action.Attach  ) {
+  function onListen  (tree: Tree, a: Action.Listen  ) {
     requireListeners(tree, a.type, a.path).add(a.listener);
   }
 
-  function onDetach  (tree: Tree, a: Action.Detach  ) {
+  function onDeafen  (tree: Tree, a: Action.Deafen  ) {
          if( a.type &&  a.listener) requestListeners(tree, a.type, a.path)?.delete(a.listener);
     else if( a.type && !a.listener) requestListeners(tree, a.type, a.path)?.clear();
-    else if(!a.type && !a.listener) requestNode(tree, a.path)?.listeners.clear();
     else if(!a.type &&  a.listener) requestNode(tree, a.path)?.listeners.forEach(
       (listeners) => listeners.delete(a.listener!)
     )
+    else if(!a.type && !a.listener) {
+      const node = requestNode(tree, a.path)
+      node?.listeners.clear();
+      node?.children .clear();
+    }
   }
 
   function onDispatch(tree: Tree, a: Action.Dispatch) {
-    onDispatchRecursive(a.event, requestNode(tree, a.path), tree, a.type, a.path);
+    const node          =          requestNode(tree, a.path);
+    if(!node) return;
+    onDispatchRecursive(a.event, node, tree, a.type, a.path);
   }
 
-  function onDispatchRecursive(event: any, node: Node | null, tree: Tree, type: string, path: string) {
-    if(!node) return
+  function onDispatchRecursive(event: any, node: Node, tree: Tree, type: string, path: string) {
     node.listeners.get(type)?.forEach(self => {
-      self(event, { self, tree, type, path })
+      self(event, { self, tree, node, type, path })
     })
     node.children.forEach((node, id) => {
       onDispatchRecursive(event, node, tree, type, Path.mend(path, id));
