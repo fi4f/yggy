@@ -1,6 +1,6 @@
 {
   "name": "@fi4f/yggy",
-  "version": "0.0.7",
+  "version": "0.1.0",
   "description": "",
   "repository": {
     "url": "git+https://github.com/fi4f/yggy.git"
@@ -18,11 +18,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@fi4f/v": "^1.1.1",
-    "lodash": "^4.17.21"
+    "@fi4f/v": "^2.0.1"
   },
   "devDependencies": {
-    "@types/lodash": "^4.17.13",
     "typescript": "^5.6.3"
   }
 }
