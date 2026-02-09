@@ -18,7 +18,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@fi4f/v": "^2.0.1"
+    "@fi4f/id": "^0.1.2",
+    "@fi4f/v": "^2.0.2"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

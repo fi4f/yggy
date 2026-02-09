@@ -1,123 +1,107 @@
-import Version from "@fi4f/v";
+import { Version } from "@fi4f/v";
+import { Id      } from "@fi4f/id";
 
 export const VERSION = Version.new({
   moniker: "yggy",
   major  : 0,
-  minor  : 1,
+  minor  : 2,
   patch  : 0,
 })
-
-export type Listener<T> = (event: T, context: Context<T>) => void;
-export type Context <T> = {
-  tree: Tree
-  node: Node
-  path: string
-  type: string
-  self: Listener<T>
-}
 
 const __LISTEN__   = "__listen__"   as const;
 const __DEAFEN__   = "__deafen__"   as const;
 const __DISPATCH__ = "__dispatch__" as const;
 
-type Listen   = {action: typeof __LISTEN__  , path: string, type  : string, listener  : Listener<any>}
-type Deafen   = {action: typeof __DEAFEN__  , path: string, type ?: string, listener ?: Listener<any>}
-type Dispatch = {action: typeof __DISPATCH__, path: string, type  : string, event: any}
-type Action   = Listen | Deafen | Dispatch
 
-type Node = {
-  children : Map<string, Node>
-  listeners: Map<string, Set<Listener<any>>>
+export namespace Yggy {
+  export type Event = 
+    | null
+    | number
+    | string
+    | boolean
+    | Array<Event>
+    | {[key: string]: Event}
+
+  export type Handler<T extends Event = any> = (what: T, with_: Context<T>) => void;
+  export type Context<T extends Event = any> = {
+    tree: Tree
+    path: string
+    when: string
+    self: Id<Handler<T>>
+  }
+
+  export type Listen   <T extends Event = any>= {action: typeof __LISTEN__  , path: string, when  : string, then  : Id<Yggy.Handler<T>>}
+  export type Deafen   <T extends Event = any>= {action: typeof __DEAFEN__  , path: string, when ?: string, then ?: Id<Yggy.Handler<T>>}
+  export type Dispatch <T extends Event = any>= {action: typeof __DISPATCH__, path: string, when  : string, what  : T}
+  export type Action   <T extends Event = any>= Listen<T> | Deafen<T> | Dispatch<T>
+
+  export type Node = {
+    children: {[id: string]: Node}
+    handlers: {[id: string]: Array<Id<Yggy.Handler<Event>>>}
+  }
+
+  export type Tree = {
+    root   : Node
+    pending: Array<Action>
+  }
 }
+
 
 const Node = {
-  new() {
+  new(): Yggy.Node {
     return {
-      children : new Map(),
-      listeners: new Map()
-    } satisfies Node;
+      children: {},
+      handlers: {}
+    } satisfies Yggy.Node
   }
 }
 
-function requireListeners(root: Node            , type: string) {
-  let listeners = root.listeners.get(type);
-  if (!listeners) root.listeners.set(
-    type, listeners = new Set()
-  )
-  return listeners;
-}
-
-function requestListeners(root: Node | undefined, type: string) {
-  let listeners = root?.listeners.get(type);
-  // if (!listeners) root.listeners.set(
-  //   type, listeners = new Set()
-  // )
-  return listeners;
-}
-
-function requireNode(root: Node            , path: string) {
-  for (const part of path.split("/")) {
-    let node = root.children.get(part);
-    if (!node) root.children.set(
-      part, node = Node.new()
-    )
-    root = node;
-  }
-  return root;
-}
-
-function requestNode(root: Node | undefined, path: string) {
-  for (const part of path.split("/")) {
-    let node = root?.children.get(part);
-    if (!node) return;
-    root = node;
-  }
-  return root;
-}
-
-export type Tree = {
-  root   : Node
-  pending: Array<Action>
-}
-
-export const Tree = {
-  new() {
+const Tree = {
+  new(): Yggy.Tree {
     return {
       root   : Node.new(),
-      pending: new Array()
-    } satisfies Tree;
+      pending:         []
+    } satisfies Yggy.Tree
   },
 
-  listen<T>(tree: Tree, type  : string, listener  : Listener<T>, o ?: { path ?: string, defer ?: boolean }) {
-    const a: Listen = { action: __LISTEN__, path: o?.path ?? "", type, listener };
-    if(o?.defer ?? true) queue(tree, a);
-    else                 flush(tree, a);
+  listen<T extends Yggy.Event>(tree: Yggy.Tree, when  : string, then  :    Yggy.Handler<T> , o ?: { path ?: string, defer ?: boolean }) {
+    const a: Yggy.Listen<T>   = { action: __LISTEN__  , path: o?.path ?? "", when, then: Id.acquire(then) };
+    if (o?.defer ?? true) queue(tree, a);
+    else                  flush(tree, a);
+    return a.then
   },
 
-  deafen<T>(tree: Tree, type ?: string, listener ?: Listener<T>, o ?: { path ?: string, defer ?: boolean }) {
-    const a: Deafen = { action: __DEAFEN__, path: o?.path ?? "", type, listener };
-    if(o?.defer ?? true) queue(tree, a);
-    else                 flush(tree, a);
+  deafen<T extends Yggy.Event>(tree: Yggy.Tree, when ?: string, then ?: Id<Yggy.Handler<T>>, o ?: { path ?: string, defer ?: boolean }) {
+    const a: Yggy.Deafen<T>   = { action: __DEAFEN__  , path: o?.path ?? "", when, then };
+    if (o?.defer ?? true) queue(tree, a);
+    else                  flush(tree, a);
   },
 
-  dispatch<T>(tree: Tree, type: string, event: T, o ?: { path ?: string, defer ?: boolean }) {
-    const a: Dispatch = { action: __DISPATCH__, path: o?.path ?? "", type, event };
-    if(o?.defer ?? true) queue(tree, a);
-    else                 flush(tree, a);
+  dispatch<T extends Yggy.Event>(tree: Yggy.Tree, when: string, what: T, o ?: { path ?: string, defer ?: boolean }) {
+    const a: Yggy.Dispatch<T> = { action: __DISPATCH__, path: o?.path ?? "", when, what };
+    if (o?.defer ?? true) queue(tree, a);
+    else                  flush(tree, a);
   },
 
-  poll(tree: Tree) {
+  poll(tree: Yggy.Tree) {
     tree.pending.splice(0).forEach(
       a => flush(tree, a)
     )
   }
 }
 
-function queue(tree: Tree, a: Action) {
+function once<T extends Yggy.Event>(then: Yggy.Handler<T>) {
+  return ((what: T, {tree, path, when, self}: Yggy.Context<T>) => {
+    then?.(what, {tree, path, when, self});
+    Tree.deafen(tree, when, self, { path, defer: false });
+  }) satisfies Yggy.Handler<T>
+}
+
+function queue(tree: Yggy.Tree, a: Yggy.Action) {
   tree.pending.push(a);
 }
 
-function flush(tree: Tree, a: Action) {
+function flush(tree: Yggy.Tree, a: Yggy.Action) {
   switch(a.action) {
     case __LISTEN__  : return onListen  (tree, a);
     case __DEAFEN__  : return onDeafen  (tree, a);
@@ -125,59 +109,138 @@ function flush(tree: Tree, a: Action) {
   }
 }
 
-function onListen  (tree: Tree, a: Listen  ) {
-  const node = requireNode(tree.root, a.path);
-  const list = requireListeners(node, a.type);
-  list.add(a.listener);
-}
-
-function onDeafen  (tree: Tree, a: Deafen  ) {
-         if (a.type !== undefined && a.listener !== undefined) {
-    const node = requestNode(tree.root, a.path);
-    const list = requestListeners(node, a.type);
-    list?.delete(a.listener);
-  } else if (a.type !== undefined && a.listener === undefined) {
-    const node = requestNode(tree.root, a.path);
-    const list = requestListeners(node, a.type);
-    list?.clear();
-  } else if (a.type === undefined && a.listener !== undefined) {
-    const node = requestNode(tree.root, a.path);
-    node?.listeners.forEach(list => {
-      list.delete(a.listener!)
-    })
-  } else if (a.type === undefined && a.listener === undefined) {
-    const node = requestNode(tree.root, a.path);
-    node?.listeners.clear();
-    node?.children .clear();
+function requestNode(root: Yggy.Node | undefined, path: string) {
+  for(const part of path.split("/")) {
+    let node = root?.children[part];
+    if (!node) return;
+    root = node;
   }
+
+  return root;
 }
 
-function onDispatch(tree: Tree, a: Dispatch) {
-  const node = requestNode(tree.root, a.path);
-  if (node) reDispatch(
-    node,
-    tree, 
-    a.path, 
-    a.type, 
-    a.event
+function requireNode(root: Yggy.Node            , path: string) {
+  for(const part of path.split("/")) {
+    let node = root.children[part];
+    if (!node) root.children[part] = (
+      node = Node.new()
+    );
+    root = node;
+  }
+
+  return root;
+}
+
+function requestHandlers(root: Yggy.Node | undefined, when: string) {
+  let handlers = root?.handlers[when];
+  return handlers;
+}
+
+function requireHandlers(root: Yggy.Node            , when: string) {
+  let handlers = root.handlers[when];
+  if (!handlers) root.handlers[when] = (
+    handlers = new Array()
+  );
+  return handlers;
+}
+
+function acquireHandler(list: Array<Id<Yggy.Handler>>, then: Id<Yggy.Handler>) {
+  if (list.includes(then))
+    return console.warn(`[Yggy.acquireHandler] Handler with id '${then}' already exists`);
+
+  list.push(then);
+}
+
+function releaseHandler(list: Array<Id<Yggy.Handler>>, then: Id<Yggy.Handler>) {
+  if (!list.includes(then))
+    return console.warn(`[Yggy.releaseHandler] Handler with id '${then}' does not exist`);
+
+  Id.release(
+    list.splice(
+      list.indexOf(then), 1)[0]);
+}
+
+function releaseHandlers(list: Array<Id<Yggy.Handler>>) {
+  list.splice(0).forEach(then => Id.release(then));
+}
+
+function releaseNode(root: Yggy.Node) {
+  Object.entries(root.handlers).forEach(
+    ([when, list]) => releaseHandlers(list)
+  );
+  Object.entries(root.children).forEach(
+    ([part, node]) => releaseNode    (node)
   );
 }
 
-function reDispatch(node: Node, tree: Tree, path: string, type: string, event: any) {
-  requestListeners(node, type)?.forEach(self => {
-    self(event, { tree, node, path, type, self })
+function onListen  (tree: Yggy.Tree, a: Yggy.Listen  ) {
+  acquireHandler(
+    requireHandlers(
+      requireNode(tree.root, a.path), a.when), a.then);
+}
+
+function onDeafen  (tree: Yggy.Tree, a: Yggy.Deafen  ) {
+         if (a.when !== undefined && a.then !== undefined) {
+    const node = requestNode(tree.root, a.path);
+    if (!node) 
+      return console.warn(`[Yggy.onDeafen] Node with path '${a.path}' does not exist`);
+    
+    const list = requestHandlers (node, a.when);
+    if (!list) 
+      return console.warn(`[Yggy.onDeafen] Node with path '${a.path}' does not have handlers for signal '${a.when}'`);
+    
+    releaseHandler(list, a.then);
+  } else if (a.when !== undefined && a.then === undefined) {
+    const node = requestNode(tree.root, a.path);
+    if (!node) 
+      return console.warn(`[Yggy.onDeafen] Node with path '${a.path}' does not exist`);
+    
+    const list = requestHandlers (node, a.when);
+    if (!list) 
+      return console.warn(`[Yggy.onDeafen] Node with path '${a.path}' does not have handlers for signal '${a.when}'`);
+
+    releaseHandlers(list);
+  } else if (a.when === undefined && a.then !== undefined) {
+    const node = requestNode(tree.root, a.path);
+    if (!node) 
+      return console.warn(`[Yggy.onDeafen] Node with path '${a.path}' does not exist`);
+
+    Object.entries(node.handlers).forEach(
+      ([when, list]) => releaseHandler(list, a.then!)
+    )
+  } else if (a.when === undefined && a.then === undefined) {
+    const node = requestNode(tree.root, a.path);
+    if (!node) 
+      return console.warn(`[Yggy.onDeafen] Node with path '${a.path}' does not exist`);
+
+    releaseNode (node);
+    node.children = {};
+    node.handlers = {};
+  }
+}
+
+function onDispatch(tree: Yggy.Tree, a: Yggy.Dispatch) {
+  const node = requestNode(tree.root, a.path);
+  if (!node) return
+  reDispatch(node, tree, a.path, a.when, a.what);
+}
+
+function reDispatch(node: Yggy.Node, tree: Yggy.Tree, path: string, when: string, what: any) {
+  requestHandlers(node, when)?.forEach(self => {
+    Id.request(self)(what, {tree, path, when, self})
   })
 
-  node.children.forEach((node, name) => {
-    reDispatch(node, tree, path.split("/").concat(name).join("/"), type, event);
+  Object.entries(node.children).forEach(([part, node]) => {
+    reDispatch(node, tree, path.split("/").concat(part).join("/"), when, what);
   })
 }
 
 export const Yggy = {
-  Version,
   VERSION,
-  Tree
+  Tree,
+  Node,
+  once
 }
 
-export default Yggy;
-
+export { Id      } from "@fi4f/id";
+export { Version } from "@fi4f/v";
